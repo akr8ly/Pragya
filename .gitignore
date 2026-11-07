@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+backend/.venv/
+.venv/
+
+# Node and Expo
+node_modules/
+mobile/.expo/
+mobile/dist/
+mobile/web-build/
+
+# Local Codex/GSD installation
+.codex/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+/backend/certs/
+*.pem
+*.key

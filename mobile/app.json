@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "Pragya",
+    "slug": "pragya",
+    "scheme": "pragya",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "plugins": [
+      "expo-router",
+      "expo-audio",
+      "expo-secure-store",
+      "expo-asset"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "android": {
+      "package": "com.akr8ly.pragya"
+    }
+  }
+}

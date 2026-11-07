@@ -14,9 +14,9 @@ Help users understand a concern, notice the thoughts connected to it, consider a
 
 1. Onboarding explains Pragya’s role, privacy choices, and the optional Spotify connection.
 2. Home shows a daily reflection prompt, a personalized playlist, and a clear Start live session action.
-3. The user starts a live voice conversation and shares what is on their mind.
+3. The user accepts a first-session privacy notice explaining that Gnani processes audio, Google Gemini receives the transcript, and session recaps are saved for progress reporting. The user then starts a live voice conversation and shares what is on their mind.
 4. Pragya responds conversationally and guides the user through a relevant CBT reflection, such as identifying a thought, considering evidence, and finding a balanced perspective.
-5. When the user ends the session, Pragya automatically creates a concise recap, captures the CBT reflection and helpfulness feedback, and suggests one small next step.
+5. A session allows up to three completed spoken turns. After the third turn (or if the user finishes earlier), Pragya asks for a 1–5 helpfulness rating. Only after feedback is submitted does it generate and save the daily session report and end the session.
 6. Pragya recommends a playlist based on the user’s stated mood or session context. If Spotify is connected, the user can create a private playlist and listen in Spotify.
 7. Progress reports summarize saved session reflections and CBT feedback over time. A new daily prompt is available on Home; it is optional and does not require a session.
 
@@ -24,11 +24,12 @@ Help users understand a concern, notice the thoughts connected to it, consider a
 
 ### Live voice session
 
-- Voice-first live interaction with clear microphone, listening, speaking, and end-session states.
-- Gnani Prisma transcribes user speech; Gnani Evon supports reflection and CBT guidance; Gnani Timbre speaks Pragya’s responses.
-- Conversation stays warm, concise, nonjudgmental, and responsive to what the user has shared.
+- Voice-first interaction in spoken turns with clear microphone, listening, processing, speaking, and end-session states.
+- Up to three completed user speaking turns per session; the third turn opens the feedback form and disables further recording.
+- Gnani Prisma transcribes user speech; Gemma 4 26B A4B generates CBT-informed reflection; Gnani Timbre speaks Pragya’s responses.
+- Conversation stays warm, concise, nonjudgmental, and responsive to what the user has shared. Gemma 4 26B A4B provides CBT-informed reflection; it does not diagnose or prescribe.
 - Guided CBT exercises are part of the conversation, not a separate journaling task.
-- The user can end the session at any time and review the generated recap.
+- The user can finish after any completed turn. Feedback is required before the session closes and the daily session report is generated.
 
 ### Guided CBT reflection
 
@@ -65,7 +66,7 @@ Use OAuth Authorization Code with PKCE for the mobile app. Request only the scop
 
 ### Automatic recap and progress reports
 
-A session recap can contain:
+A daily session report is generated after feedback submission and can contain:
 
 - a short summary of what the user discussed,
 - themes explicitly present in the conversation,
@@ -77,12 +78,12 @@ Progress reports can summarize saved recaps, recurring themes, and CBT feedback 
 
 ## Mobile app screens
 
-- Home: daily prompt, featured playlist, Start live session, recent recap, and a compact progress preview.
+- Home: daily prompt, playlist preview, Start live session, recent recap, and a compact progress preview.
 - Live Session: voice interaction, captions/transcript controls, guided CBT reflection, privacy indicator, and end-session control.
-- Session Recap: automatic summary, CBT reflection, helpfulness feedback, suggested next step, and save/delete controls.
+- Daily Session Report: automatic summary, CBT reflection, submitted helpfulness rating, suggested next step, and a link to the broader progress report.
 - Progress: recent report, recurring themes, CBT exercise reflections, and nonclinical trend descriptions.
 - Playlists: featured recommendation, mood/intention choices, recent playlists, and Spotify handoff.
-- Settings and Privacy: Spotify connection, prompt and spoken-response preferences, saved recap choices, data review/deletion, and consent.
+- Settings and Privacy: Spotify integration preview, prompt and spoken-response preferences, saved recap review/deletion, and consent.
 
 ## Technology stack
 
@@ -108,6 +109,15 @@ Progress reports can summarize saved recaps, recurring themes, and CBT feedback 
 - Row Level Security (RLS) so users can access only their own records.
 - Raw voice recordings are not retained by default. Store only the minimum session data needed for the features, explain it clearly, and provide deletion controls.
 
+## Supabase setup for the prototype
+
+1. Add `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` to `backend/.env`. The backend validates mobile access tokens with Supabase Auth and uses the caller's token for recap reads and writes so Row Level Security applies. `SUPABASE_SECRET_KEY` is not needed by this prototype flow; keep it server-side if you configure it for future administrative operations.
+2. Add `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` to `mobile/.env`. Restart Expo after changing these values. The mobile app stores its auth session using SecureStore on native devices.
+3. In Supabase Dashboard, open **Authentication → URL Configuration → Redirect URLs** and add both `pragya://auth/callback` and `http://localhost:8081/auth/callback`.
+4. Run `backend/supabase_schema.sql` in the Supabase SQL Editor to create the user-scoped recap table and RLS policies.
+5. Magic-link callback handling uses the `pragya://` app scheme. Use an Expo development build for native deep-link sign-in; Expo Go does not register this app-specific scheme reliably.
+
+The app currently supports email magic-link sign-in. Do not put the Supabase secret key or Gnani/Gemini credentials in the mobile environment or commit any `.env` file.
 ## High-level architecture
 
     Mobile app
@@ -116,24 +126,27 @@ Progress reports can summarize saved recaps, recurring themes, and CBT feedback 
       └── HTTPS / WebSocket connection to FastAPI
               ├── Safety checks and session orchestration
               ├── Gnani Prisma: speech to text
-              ├── Gnani Evon: reflection, CBT guidance, recap, themes
+              ├── Google Gemini API (Gemma 4 26B A4B): CBT-informed response generation
               ├── Gnani Timbre: text to speech
               ├── Spotify Web API: private playlist creation
               └── Supabase Auth and PostgreSQL
 
-At session end, the backend validates and stores only the information the user agreed to retain. Progress reports use saved structured summaries and feedback rather than replaying the full raw conversation.
+After the user submits feedback, the backend generates and stores the daily session report before marking the session ended. Progress reports use saved structured summaries and feedback rather than replaying the full raw conversation.
 
 ## Backend API outline
 
 - POST /api/sessions — create a session
-- POST /api/sessions/{session_id}/turns — process a voice or text turn
+- POST /api/sessions/{session_id}/turns — process a text turn
+- POST /api/sessions/{session_id}/voice-turns — transcribe, respond, and synthesize one spoken turn
+- GET /api/sessions/{session_id}/audio/{audio_id} — stream the temporary spoken response
 - WS /api/sessions/{session_id}/live — optional live session events
 - POST /api/sessions/{session_id}/end — generate and save the recap
+- POST /api/sessions/{session_id}/feedback — save a 1–5 CBT reflection helpfulness rating
 - GET /api/sessions — list the user's saved recaps
 - GET /api/prompts/daily — retrieve today’s prompt
 - POST /api/playlists/recommend — recommend a playlist from user-approved context
 - POST /api/playlists/spotify — create a private Spotify playlist
-- GET /api/progress?period=7d — retrieve a progress report
+- GET /api/progress?days=30 — retrieve a progress report
 - DELETE /api/account/data — delete user data
 
 The exact routes and payloads should be finalized during implementation. Validate all AI output before showing or storing it.
@@ -173,7 +186,7 @@ Avoid storing raw audio or full transcripts unless the user has explicitly chose
 
 - Build Home, live session, and session recap screens.
 - Add microphone permission handling, voice capture, captions, and session lifecycle.
-- Integrate Gnani Prisma, Evon, and Timbre behind FastAPI.
+- Connect the mobile voice session to Prisma, Gemma 4, and Timbre through FastAPI using short, turn-based audio requests.
 - Add CBT exercise state and capture helpfulness feedback.
 
 ### Phase 3 — Automated reflection
@@ -223,7 +236,7 @@ Avoid storing raw audio or full transcripts unless the user has explicitly chose
 
 ## Prototype success criteria
 
-- A user can start and end a live voice session.
+- A user can complete up to three spoken turns, submit a helpfulness rating, and then end the session with a generated daily report.
 - Pragya can transcribe, respond, and speak using the configured Gnani services.
 - A CBT reflection can be completed conversationally, with helpfulness feedback recorded.
 - The recap is created automatically, with no separate journal form.
@@ -234,7 +247,7 @@ Avoid storing raw audio or full transcripts unless the user has explicitly chose
 
 ## Project status
 
-Prototype planning. The product flow and initial stack are defined; implementation will proceed incrementally, beginning with the mobile app shell and FastAPI backend.
+Prototype implementation. FastAPI and the Expo app include email magic-link sign-in, first-session data consent, turn-based voice (Prisma → Gemma 4 → Timbre), a three-turn session cap, feedback-before-report finalization, daily session reports, daily prompts, and progress aggregation. Session ownership is scoped to the authenticated Supabase user; reports are stored in Supabase with Row Level Security and can be deleted from Settings. Spotify playlist creation, continuous streaming, and production safety review remain future work. Prisma REST accepts clips up to 30 seconds, so each turn waits for its spoken response before the next turn.
 
 ## Name
 
