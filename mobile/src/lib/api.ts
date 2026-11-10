@@ -28,6 +28,12 @@ const apiUrl =
   isLocalWeb && configuredUrlIsLocal
     ? "http://127.0.0.1:8001"
     : configuredApiUrl || defaultApiUrl;
+let activeApiUrl = apiUrl;
+
+function apiBaseCandidates(): string[] {
+  const androidTunnelUrl = __DEV__ && Platform.OS === "android" ? "http://127.0.0.1:8000" : undefined;
+  return [...new Set([activeApiUrl, apiUrl, androidTunnelUrl, defaultApiUrl].filter((value): value is string => Boolean(value)))];
+}
 
 type SessionStart = { session_id: string; status: "active"; processing_status: "provider_pending" };
 type SessionEnd = {
@@ -66,21 +72,52 @@ export type VoiceTurn = { session_id: string; transcript: string; response: stri
 export async function getAccessToken(): Promise<string> {
   const { data, error } = await supabase.auth.getSession();
   if (error || !data.session?.access_token) throw new Error("Sign in again to continue.");
-  return data.session.access_token;
+  const expiresSoon = Boolean(
+    data.session.expires_at && data.session.expires_at * 1000 <= Date.now() + 60_000,
+  );
+  if (!expiresSoon) return data.session.access_token;
+
+  const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+  if (refreshError || !refreshed.session?.access_token) {
+    throw new Error("Your sign-in expired. Please sign in again.");
+  }
+  return refreshed.session.access_token;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = await getAccessToken();
-  const response = await fetch(apiUrl + path, {
-    ...init,
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...init?.headers },
-  });
-  if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    const detail = body?.detail;
-    throw new Error(typeof detail === "string" ? detail : "Pragya API is unavailable.");
+  let lastNetworkError: unknown;
+  for (const baseUrl of apiBaseCandidates()) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), __DEV__ && Platform.OS === "android" ? 4_000 : 12_000);
+    try {
+      const response = await fetch(baseUrl + path, {
+        ...init,
+        signal: controller.signal,
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...init?.headers },
+      });
+      activeApiUrl = baseUrl;
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        const detail = body?.detail;
+        const responseError = new Error(typeof detail === "string" ? detail : "Pragya API is unavailable.") as Error & { apiResponse?: boolean };
+        responseError.apiResponse = true;
+        throw responseError;
+      }
+      return (await response.json()) as T;
+    } catch (error) {
+      if ((error as { apiResponse?: boolean } | null)?.apiResponse) throw error;
+      if (error instanceof Error && error.message !== "Pragya API is unavailable." && !error.message.includes("fetch") && !error.message.includes("Network") && !error.message.includes("cancel")) {
+        throw error;
+      }
+      lastNetworkError = error;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
-  return (await response.json()) as T;
+  throw lastNetworkError instanceof Error
+    ? new Error("Could not reach the local Pragya API. Keep the server running and retry.")
+    : new Error("Pragya API is unavailable.");
 }
 
 export function createSession(): Promise<SessionStart> {
@@ -178,7 +215,7 @@ export async function sendVoiceTurn(
     // not React Native's older { uri, name, type } upload object.
     form.append("audio_file", new File(uri), filename);
   }
-  const response = await expoFetch(`${apiUrl}/api/sessions/${encodeURIComponent(sessionId)}/voice-turns`, {
+  const response = await expoFetch(`${activeApiUrl}/api/sessions/${encodeURIComponent(sessionId)}/voice-turns`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: form,
@@ -192,7 +229,7 @@ export async function sendVoiceTurn(
 }
 
 export function getTurnAudioUrl(sessionId: string, audioId: string): string {
-  return `${apiUrl}/api/sessions/${encodeURIComponent(sessionId)}/audio/${encodeURIComponent(audioId)}`;
+  return `${activeApiUrl}/api/sessions/${encodeURIComponent(sessionId)}/audio/${encodeURIComponent(audioId)}`;
 }
 
 export function deleteMyData(): Promise<{ deleted_recaps: number; message: string }> {

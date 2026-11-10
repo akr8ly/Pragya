@@ -1,15 +1,21 @@
 import { useEffect, useState } from "react";
-import { Tabs } from "expo-router";
+import { router, Tabs } from "expo-router";
 import * as Linking from "expo-linking";
+import { Text, type ColorValue } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { Session } from "@supabase/supabase-js";
 import AuthScreen from "../components/auth-screen";
 import ConsentScreen from "../components/consent-screen";
 import { completeAuthCallback } from "../lib/auth-callback";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
+import { completeSpotifyCallback } from "../lib/spotify";
 
 const ink = "#173D32";
 const muted = "#68746F";
+
+function TabIcon({ glyph, color }: { glyph: string; color: ColorValue }) {
+  return <Text accessibilityElementsHidden importantForAccessibility="no" style={{ color, fontSize: 20, lineHeight: 22, fontWeight: "700" }}>{glyph}</Text>;
+}
 
 export default function RootLayout() {
   const insets = useSafeAreaInsets();
@@ -40,7 +46,14 @@ export default function RootLayout() {
     });
 
     const handleUrl = async (url: string | null) => {
-      if (!url || !url.includes("auth/callback")) return;
+      if (!url) return;
+      if (url.includes("auth/spotify/callback")) {
+        try { await completeSpotifyCallback(url); }
+        catch { /* Playlists shows a retryable connection state. */ }
+        router.navigate("/playlists");
+        return;
+      }
+      if (!url.includes("auth/callback")) return;
       setAuthLinkMessage("Completing sign-in…");
       const callbackError = await completeAuthCallback(url);
       if (callbackError) setAuthLinkMessage(callbackError);
@@ -77,13 +90,14 @@ export default function RootLayout() {
         sceneStyle: { backgroundColor: "#F8F7F1" },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: "Home" }} />
-      <Tabs.Screen name="session" options={{ title: "Session" }} />
+      <Tabs.Screen name="index" options={{ title: "Home", tabBarIcon: ({ color }) => <TabIcon glyph="⌂" color={color} /> }} />
+      <Tabs.Screen name="session" options={{ title: "Session", tabBarIcon: ({ color }) => <TabIcon glyph="◉" color={color} /> }} />
       <Tabs.Screen name="progress" options={{ href: null }} />
-      <Tabs.Screen name="playlists" options={{ title: "Playlists" }} />
-      <Tabs.Screen name="profile" options={{ href: null }} />
+      <Tabs.Screen name="playlists" options={{ title: "Playlists", tabBarIcon: ({ color }) => <TabIcon glyph="♫" color={color} /> }} />
+      <Tabs.Screen name="profile" options={{ title: "Profile", tabBarIcon: ({ color }) => <TabIcon glyph="◎" color={color} /> }} />
       <Tabs.Screen name="settings" options={{ href: null }} />
       <Tabs.Screen name="auth/callback" options={{ href: null }} />
+      <Tabs.Screen name="auth/spotify/callback" options={{ href: null }} />
       <Tabs.Screen name="explore" options={{ href: null }} />
     </Tabs>
   );

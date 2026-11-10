@@ -1,6 +1,7 @@
 import { Link } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   createAudioPlayer,
   RecordingPresets,
@@ -21,13 +22,16 @@ import {
 
 type Turn = { transcript: string; response: string; audioId: string };
 const MAX_SPOKEN_TURNS = 3;
+const MAX_RECORDING_MILLIS = 30_000;
 
 export default function SessionScreen() {
+  const insets = useSafeAreaInsets();
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recordingState = useAudioRecorderState(recorder);
   const [player] = useState(() => createAudioPlayer(null));
   const playerStatus = useAudioPlayerStatus(player);
   const turnInFlight = useRef(false);
+  const finishTurnRef = useRef<() => Promise<void>>(async () => undefined);
   const playbackObjectUrl = useRef<string | null>(null);
   const [notice, setNotice] = useState("");
   const [permissionDenied, setPermissionDenied] = useState(false);
@@ -145,6 +149,22 @@ export default function SessionScreen() {
     }
   }
 
+  useEffect(() => {
+    finishTurnRef.current = finishTurn;
+  });
+
+  useEffect(() => {
+    if (!recordingState.isRecording) return;
+    const duration = recordingState.durationMillis ?? 0;
+    const remaining = Math.max(0, MAX_RECORDING_MILLIS - duration);
+    const timeout = setTimeout(() => {
+      if (turnInFlight.current) return;
+      setNotice("This 30-second turn is complete. Sending it to Pragya now…");
+      void finishTurnRef.current();
+    }, remaining);
+    return () => clearTimeout(timeout);
+  }, [recordingState.durationMillis, recordingState.isRecording]);
+
   async function toggleLatestReply(audioId: string) {
     if (audioId !== currentAudioId || !sessionId) return;
     if (playerStatus.playing) {
@@ -191,20 +211,24 @@ export default function SessionScreen() {
     }
   }
 
-  const seconds = Math.floor((recordingState.durationMillis ?? 0) / 1000);
+  const seconds = Math.min(30, Math.floor((recordingState.durationMillis ?? 0) / 1000));
   const clock = String(Math.floor(seconds / 60)).padStart(2, "0") + ":" + String(seconds % 60).padStart(2, "0");
   const recording = recordingState.isRecording;
 
   return (
-    <ScrollView style={s.page} contentContainerStyle={s.body}>
-      <Link href="/" style={s.back}>←  Home</Link>
+    <ScrollView style={s.page} contentContainerStyle={[s.body, { paddingTop: insets.top + 18 }]}>
+      <View pointerEvents="none" style={s.leafCluster}>
+        <View style={[s.leaf, s.leafOne]} />
+        <View style={[s.leaf, s.leafTwo]} />
+      </View>
+      <Text style={s.eyebrow}>A PRIVATE REFLECTION</Text>
       <Text style={s.title}>Live session</Text>
       <Text style={s.sub}>Speak naturally, one turn at a time. Pragya will listen and reply aloud.</Text>
 
       <View style={[s.micCard, recording && s.micActive]}>
         <Text style={s.micIcon}>{recording ? "●" : "◉"}</Text>
         <Text style={s.micText}>{recording ? "Listening" : busy ? "Processing your turn" : feedbackOpen ? "Feedback before your daily report" : sessionId ? `Your turn · ${turns.length} of ${MAX_SPOKEN_TURNS} used` : "Ready when you are"}</Text>
-        <Text style={s.timer}>{recording ? clock : " "}</Text>
+        <Text style={s.timer}>{recording ? `${clock} / 00:30` : "Each turn is up to 30 seconds"}</Text>
         {!feedbackOpen ? (
           <Pressable
             accessibilityRole="button"
@@ -334,11 +358,15 @@ export default function SessionScreen() {
 
 const s = StyleSheet.create({
   page: { flex: 1, backgroundColor: "#F8F7F1" },
-  body: { padding: 24, paddingTop: 28, paddingBottom: 30, gap: 18 },
-  back: { color: "#214B3B", fontSize: 15, fontWeight: "600" },
-  title: { color: "#173D32", fontSize: 32, fontWeight: "700", marginTop: 10 },
+  body: { position: "relative", padding: 24, paddingTop: 28, paddingBottom: 30, gap: 18, overflow: "hidden" },
+  leafCluster: { position: "absolute", right: -30, top: 58, width: 140, height: 115, opacity: 0.5 },
+  leaf: { position: "absolute", width: 78, height: 36, borderTopLeftRadius: 78, borderBottomRightRadius: 78, backgroundColor: "#E1D5F1" },
+  leafOne: { right: 0, top: 9, transform: [{ rotate: "36deg" }] },
+  leafTwo: { right: 50, top: 34, transform: [{ rotate: "-8deg" }], backgroundColor: "#EEE6F7" },
+  eyebrow: { color: "#687D70", fontSize: 10, letterSpacing: 1.8, fontWeight: "800", marginTop: -8 },
+  title: { color: "#173D32", fontSize: 34, lineHeight: 40, fontWeight: "800", marginTop: -12, fontFamily: "serif" },
   sub: { color: "#68746F", fontSize: 16, lineHeight: 23 },
-  micCard: { minHeight: 245, backgroundColor: "#EEF1E8", borderRadius: 28, alignItems: "center", justifyContent: "center", gap: 12, marginTop: 8, padding: 22 },
+  micCard: { minHeight: 245, backgroundColor: "#EEF1E8", borderRadius: 28, alignItems: "center", justifyContent: "center", gap: 12, marginTop: 8, padding: 22, borderWidth: 1, borderColor: "#E0E7D8" },
   micActive: { backgroundColor: "#E5EEE6" },
   micIcon: { color: "#173D32", fontSize: 54 },
   micText: { color: "#173D32", fontSize: 18, fontWeight: "700" },
@@ -349,7 +377,7 @@ const s = StyleSheet.create({
   stopText: { color: "#8F3B3B", fontSize: 16, fontWeight: "700" },
   permission: { color: "#8F3B3B", fontSize: 13, textAlign: "center" },
   notice: { color: "#375A49", backgroundColor: "#E7ECDD", padding: 13, borderRadius: 14, fontSize: 13, lineHeight: 20 },
-  feedbackCard: { backgroundColor: "white", borderRadius: 22, borderWidth: 1, borderColor: "#ECEAE1", padding: 20, gap: 12 },
+  feedbackCard: { backgroundColor: "#F2F0F8", borderRadius: 22, borderWidth: 1, borderColor: "#E8E3F1", padding: 20, gap: 12 },
   turnList: { gap: 12 },
   turnCard: { backgroundColor: "white", borderRadius: 20, borderWidth: 1, borderColor: "#ECEAE1", padding: 18, gap: 8 },
   turnText: { color: "#173D32", fontSize: 15, lineHeight: 23 },

@@ -1,9 +1,10 @@
-import { Link } from "expo-router";
 import { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { getProgressReport, ProgressReport } from "../lib/api";
 
 export default function ProgressScreen() {
+  const insets = useSafeAreaInsets();
   const [report, setReport] = useState<ProgressReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -16,8 +17,7 @@ export default function ProgressScreen() {
   }, []);
 
   return (
-    <ScrollView style={s.page} contentContainerStyle={s.body}>
-      <Link href="/" style={s.back}>←  Home</Link>
+    <ScrollView style={s.page} contentContainerStyle={[s.body, { paddingTop: insets.top + 18 }]}>
       <Text style={s.title}>Your progress</Text>
       <Text style={s.sub}>A gentle look at your reflections over the past 30 days.</Text>
 
@@ -72,7 +72,6 @@ export default function ProgressScreen() {
 const s = StyleSheet.create({
   page: { flex: 1, backgroundColor: "#F8F7F1" },
   body: { padding: 24, paddingTop: 28, paddingBottom: 36, gap: 16 },
-  back: { color: "#214B3B", fontSize: 15, fontWeight: "600" },
   title: { color: "#173D32", fontSize: 32, fontWeight: "700", marginTop: 10 },
   sub: { color: "#68746F", fontSize: 16, lineHeight: 23 },
   summaryRow: { flexDirection: "row", gap: 12 },

@@ -7,7 +7,7 @@ This three-day milestone turns the already-working local voice prototype into a 
 ## Phases
 
 - [x] **Phase 1: Voice Session Reliability** - Make the complete three-turn reflection, feedback, and report journey dependable and demoable.
-- [ ] **Phase 2: Personal Progress Experience** - Deliver profile, anonymous persona, calendar, history, and mobile navigation polish.
+- [x] **Phase 2: Personal Progress Experience** - Deliver profile, anonymous persona, calendar, history, and mobile navigation polish.
 - [ ] **Phase 3: Demo Completion** - Finish playlist experience, safety/privacy presentation, and release readiness.
 
 ## Phase Details
@@ -33,7 +33,10 @@ Plans:
   1. Profile is reachable from Home and never shows an email-derived name.
   2. Calendar visually reflects the signed-in user’s report activity and exposes report history.
   3. Navigation and tab labels are safe on the target Android device.
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [x] 02-01: Build and verify the private profile, activity calendar, report history, and Android navigation treatment.
 
 ### Phase 3: Demo Completion
 **Goal**: The app communicates a compelling playlist concept and has polished safety, loading, empty, and error states.
@@ -50,5 +53,5 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |---|---|---|---|
 | 1. Voice Session Reliability | 1/1 | Complete | 2026-11-07 |
-| 2. Personal Progress Experience | 0/TBD | Not started | - |
+| 2. Personal Progress Experience | 1/1 | Complete | 2026-11-07 |
 | 3. Demo Completion | 0/TBD | Not started | - |
